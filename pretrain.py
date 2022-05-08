@@ -113,8 +113,7 @@ def main(args, config):
         state_dict = checkpoint['model']
         model.load_state_dict(state_dict)
 
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        start_epoch = checkpoint['epoch']+1
+        optimizer = torch.optim.AdamW(params=model.parameters(), lr=config['init_lr'], weight_decay=config['weight_decay'])
         print('resume checkpoint from %s'%args.checkpoint)
 
     model_without_ddp = model
