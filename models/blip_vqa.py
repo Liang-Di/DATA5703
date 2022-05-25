@@ -13,7 +13,8 @@ class BLIP_VQA(nn.Module):
                  image_size = 480,
                  vit = 'base',
                  vit_grad_ckpt = False,
-                 vit_ckpt_layer = 0,                   
+                 vit_ckpt_layer = 0,
+                 ans_dict = {}                   
                  ):
         """
         Args:
@@ -28,10 +29,12 @@ class BLIP_VQA(nn.Module):
         
         encoder_config = BertConfig.from_json_file(med_config)
         encoder_config.encoder_width = vision_width
-        self.text_encoder = BertModel(config=encoder_config, add_pooling_layer=False) 
+        self.text_encoder = BertModel(config=encoder_config, add_pooling_layer=True) 
         
         decoder_config = BertConfig.from_json_file(med_config)        
-        self.text_decoder = BertLMHeadModel(config=decoder_config)          
+        self.text_decoder = BertLMHeadModel(config=decoder_config)
+        self.ans_dict = ans_dict
+        self.linear = nn.Linear(768, len(ans_dict))      
 
 
     def forward(self, image, question, answer=None, n=None, weights=None, train=True, inference='rank', k_test=128):
@@ -48,9 +51,15 @@ class BLIP_VQA(nn.Module):
             n: number of answers for each question
             weights: weight for each answer
             '''                     
-            answer = self.tokenizer(answer, padding='longest', return_tensors="pt").to(image.device) 
-            answer.input_ids[:,0] = self.tokenizer.bos_token_id
-            answer_targets = answer.input_ids.masked_fill(answer.input_ids == self.tokenizer.pad_token_id, -100)      
+            answer_idx = []
+            for ans in answer:
+                if ans in self.ans_dict:
+                    answer_idx.append(self.ans_dict[ans])
+                else:
+                    answer_idx.append(self.ans_dict['[UNKNOWN]'])
+            
+
+            answer_label = torch.tensor(answer_idx).to(image.device) 
 
             question_output = self.text_encoder(question.input_ids, 
                                                 attention_mask = question.attention_mask, 
@@ -66,17 +75,10 @@ class BLIP_VQA(nn.Module):
             question_states = torch.stack(question_states,0)    
             question_atts = torch.stack(question_atts,0)     
 
-            answer_output = self.text_decoder(answer.input_ids, 
-                                              attention_mask = answer.attention_mask, 
-                                              encoder_hidden_states = question_states,
-                                              encoder_attention_mask = question_atts,                  
-                                              labels = answer_targets,
-                                              return_dict = True,   
-                                              reduction = 'none',
-                                             )      
-            
-            loss = weights * answer_output.loss
-            loss = loss.sum()/image.size(0)
+           
+            linear_output = self.linear(question_output.pooler_output)
+            cirterion = nn.CrossEntropyLoss()
+            loss = cirterion(linear_output, answer_label)
 
             return loss
             
