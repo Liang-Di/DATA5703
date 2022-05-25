@@ -89,33 +89,10 @@ class BLIP_VQA(nn.Module):
                                                 encoder_hidden_states = image_embeds,
                                                 encoder_attention_mask = image_atts,                                    
                                                 return_dict = True) 
+            linear_output = self.linear(question_output.pooler_output)
+            prediction = torch.max(linear_output,dim=1).indices
+            return prediction
             
-            if inference=='generate':
-                num_beams = 3
-                question_states = question_output.last_hidden_state.repeat_interleave(num_beams,dim=0)
-                question_atts = torch.ones(question_states.size()[:-1],dtype=torch.long).to(question_states.device)
-                model_kwargs = {"encoder_hidden_states": question_states, "encoder_attention_mask":question_atts}
-                
-                bos_ids = torch.full((image.size(0),1),fill_value=self.tokenizer.bos_token_id,device=image.device)
-                
-                outputs = self.text_decoder.generate(input_ids=bos_ids,
-                                                     max_length=10,
-                                                     min_length=1,
-                                                     num_beams=num_beams,
-                                                     eos_token_id=self.tokenizer.sep_token_id,
-                                                     pad_token_id=self.tokenizer.pad_token_id, 
-                                                     **model_kwargs)
-                
-                answers = []    
-                for output in outputs:
-                    answer = self.tokenizer.decode(output, skip_special_tokens=True)    
-                    answers.append(answer)
-                return answers
-            
-            elif inference=='rank':
-                max_ids = self.rank_answer(question_output.last_hidden_state, question.attention_mask, 
-                                           answer.input_ids, answer.attention_mask, k_test) 
-                return max_ids
  
                 
                 

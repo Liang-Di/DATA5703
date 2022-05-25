@@ -7,7 +7,7 @@
 '''
 import argparse
 import os
-import ruamel_yaml as yaml
+import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -28,6 +28,9 @@ from utils import cosine_lr_schedule
 from data import create_dataset, create_sampler, create_loader
 from data.vqa_dataset import vqa_collate_fn
 from data.utils import save_result
+
+from sklearn.metrics import accuracy_score, f1_score
+
 
 
 def train(model, data_loader, optimizer, epoch, device):
@@ -60,7 +63,7 @@ def train(model, data_loader, optimizer, epoch, device):
 
 
 @torch.no_grad()
-def evaluation(model, data_loader, device, config) :
+def evaluation(model, data_loader, device, config, id_to_ans, ans_to_id) :
     # test
     model.eval()
             
@@ -69,28 +72,36 @@ def evaluation(model, data_loader, device, config) :
     print_freq = 50
     
     result = []
+    answer_list = data_loader.dataset.answer_list
     
+    ground_truth = []
+    result_idx = []
+
+    for ans in answer_list:
+      if ans in ans_to_id:
+        ground_truth.append(ans_to_id[ans])
+      else:
+        ground_truth.append(ans_to_id['[UNKNOWN]'])
+
     if config['inference']=='rank':   
         answer_list = data_loader.dataset.answer_list
         answer_candidates = model.tokenizer(answer_list, padding='longest', return_tensors='pt').to(device)    
         answer_candidates.input_ids[:,0] = model.tokenizer.bos_token_id
         
     for n, (image, question, question_id) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):        
-        image = image.to(device,non_blocking=True)             
-
-        if config['inference']=='generate':
-            answers = model(image, question, train=False, inference='generate') 
-            
-            for answer, ques_id in zip(answers, question_id):
-                ques_id = int(ques_id.item())       
-                result.append({"question_id":ques_id, "answer":answer})             
-            
-        elif config['inference']=='rank':    
-            answer_ids = model(image, question, answer_candidates, train=False, inference='rank', k_test=config['k_test'])      
-
-            for ques_id, answer_id in zip(question_id, answer_ids):
-                result.append({"question_id":int(ques_id.item()), "answer":answer_list[answer_id]})   
-
+        image = image.to(device,non_blocking=True)  
+        answers_id = model(image, question, train=False) 
+        result_idx += answers_id.tolist()
+        answers = [id_to_ans[x] for x in answers_id.tolist()]
+        for answer, ques_id in zip(answers, question_id):
+            ques_id = int(ques_id.item())       
+            result.append({"question_id":ques_id, "answer":answer})             
+    
+    print('Accuracy', accuracy_score(ground_truth, result_idx))
+    print('f1_score-macro:', f1_score(ground_truth, result_idx, average="macro"))
+    print('f1_score-micro:', f1_score(ground_truth, result_idx, average="micro"))
+    print('f1_score-weighted:', f1_score(ground_truth, result_idx, average="weighted"))
+    
     return result
 
 
@@ -121,10 +132,26 @@ def main(args, config):
                                               batch_size=[config['batch_size_train'],config['batch_size_test']],
                                               num_workers=[4,4],is_trains=[True, False], 
                                               collate_fns=[vqa_collate_fn,None]) 
+    train_json = json.load(open('/content/BLIP/data/slake/train.json', 'r'))
+    all_answers = []
+
+    for item in train_json:
+      all_answers.append(item['answer'][0])
+
+    ans_to_id = {}
+    idx = 1
+
+    ans_to_id['[UNKNOWN]'] = 0
+
+    for ans in set(all_answers):
+      ans_to_id[ans] = len(ans_to_id)
+
+    id_to_ans = {y: x for x, y in ans_to_id.items()}
+
     #### Model #### 
     print("Creating model")
     model = blip_vqa(pretrained=config['pretrained'], image_size=config['image_size'], 
-                       vit=config['vit'], vit_grad_ckpt=config['vit_grad_ckpt'], vit_ckpt_layer=config['vit_ckpt_layer'])
+                       vit=config['vit'], vit_grad_ckpt=config['vit_grad_ckpt'], vit_ckpt_layer=config['vit_ckpt_layer'], ans_dict=ans_to_id)
 
     model = model.to(device)   
     
@@ -167,9 +194,9 @@ def main(args, config):
             }
             torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch))  
 
-        dist.barrier()         
+       
 
-    vqa_result = evaluation(model_without_ddp, test_loader, device, config)        
+    vqa_result = evaluation(model_without_ddp, test_loader, device, config, id_to_ans, ans_to_id)        
     result_file = save_result(vqa_result, args.result_dir, 'vqa_result')  
                       
     total_time = time.time() - start_time
