@@ -18,16 +18,13 @@ class vqa_dataset(Dataset):
         self.vg_root = vg_root
         
         if split=='train':
-            urls = {'vqa_train':'/content/BLIP/data/slake/train.json',
-                    'vqa_val':'/content/BLIP/data/slake/val.json'}
-        
             self.annotation = []
             for f in train_files:
-                self.annotation += json.load(open(urls[f],'r'))
+                self.annotation += json.load(open(os.path.join(ann_root,'%s.json'%f),'r'))
         else:
-            self.annotation = json.load(open('/content/BLIP/data/slake/test.json','r'))
-            
-            self.answer_list = json.load(open('/content/BLIP/data/slake/answer_list.json','r'))    
+            self.annotation = json.load(open(os.path.join(ann_root,'test.json'),'r'))
+            self.answer_list = json.load(open(os.path.join(ann_root,'answer_list.json'),'r'))       
+ 
                 
         
     def __len__(self):

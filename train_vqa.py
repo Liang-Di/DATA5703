@@ -132,7 +132,10 @@ def main(args, config):
                                               batch_size=[config['batch_size_train'],config['batch_size_test']],
                                               num_workers=[4,4],is_trains=[True, False], 
                                               collate_fns=[vqa_collate_fn,None]) 
-    train_json = json.load(open('/content/BLIP/data/slake/train.json', 'r'))
+    
+    #### Encode answer ####
+    print('Encoding Answers')
+    train_json = json.load(open(config['vqa_root'] + 'train.json', 'r'))
     all_answers = []
 
     for item in train_json:
@@ -147,6 +150,8 @@ def main(args, config):
       ans_to_id[ans] = len(ans_to_id)
 
     id_to_ans = {y: x for x, y in ans_to_id.items()}
+    print('Generate answer dict:')
+    print(ans_to_id)
 
     #### Model #### 
     print("Creating model")
