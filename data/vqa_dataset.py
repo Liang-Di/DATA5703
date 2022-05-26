@@ -20,10 +20,10 @@ class vqa_dataset(Dataset):
         if split=='train':
             self.annotation = []
             for f in train_files:
-                self.annotation += json.load(open(os.path.join(ann_root,'%s.json'%f),'r'))
+                self.annotation += json.load(open(os.path.join(vqa_root,'%s.json'%f),'r'))
         else:
-            self.annotation = json.load(open(os.path.join(ann_root,'test.json'),'r'))
-            self.answer_list = json.load(open(os.path.join(ann_root,'answer_list.json'),'r'))       
+            self.annotation = json.load(open(os.path.join(vqa_root,'test.json'),'r'))
+            self.answer_list = json.load(open(os.path.join(vqa_root,'answer_list.json'),'r'))       
  
                 
         

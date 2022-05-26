@@ -1,4 +1,4 @@
-vqa_root: '/content/BLIP/data/slake/' #followed by train2014/
+vqa_root: '/content/BLIP/data/slake/' #This should be the data folder that contains the 'train.json', 'val.json', 'test.json' and 'answerlist.json'
 vg_root: ''  #followed by image/
 train_files: ['train','val']
 ann_root: 'annotation'
