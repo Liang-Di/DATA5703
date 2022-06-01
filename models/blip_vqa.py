@@ -51,16 +51,21 @@ class BLIP_VQA(nn.Module):
             '''
             n: number of answers for each question
             weights: weight for each answer
-            '''                     
-            answer_idx = []
-            for ans in answer:
-                if ans in self.ans_dict:
-                    answer_idx.append(self.ans_dict[ans])
-                else:
-                    answer_idx.append(self.ans_dict['[UNKNOWN]'])
+            '''
+            current_idx = 0
+            ground_truth = []
+            for length in (n):
+              label_l = answer[current_idx: length]
+              current_idx += length
+              encoded = [0]*15
+              for label in label_l:
+                encoded[self.ans_dict[label]] = 1
+              ground_truth.append(encoded)
+
+                
             
 
-            answer_label = torch.tensor(answer_idx).to(image.device) 
+            ground_truth = torch.tensor(ground_truth).to(image.device) 
 
             question_output = self.text_encoder(question.input_ids, 
                                                 attention_mask = question.attention_mask, 
@@ -78,8 +83,8 @@ class BLIP_VQA(nn.Module):
 
            
             linear_output = self.linear(question_output.pooler_output)
-            cirterion = nn.CrossEntropyLoss()
-            loss = cirterion(linear_output, answer_label)
+            cirterion = torch.nn.BCEWithLogitsLoss()
+            loss = cirterion(linear_output, ground_truth.float())
 
             return loss
             
