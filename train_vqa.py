@@ -75,32 +75,41 @@ def evaluation(model, data_loader, device, config, id_to_ans, ans_to_id) :
     answer_list = data_loader.dataset.answer_list
     
     ground_truth = []
-    result_idx = []
+    logit_list = []
+    #### Encode answer ####
+    print('Encoding Answers')
+    labels = json.load(open(config['vqa_root'] + 'labels.json', 'r'))
 
-    for ans in answer_list:
-      if ans in ans_to_id:
-        ground_truth.append(ans_to_id[ans])
-      else:
-        ground_truth.append(ans_to_id['[UNKNOWN]'])
+  
+    for label_l in labels:
+      encoded = [0]*15
+      for label in label_l:
+        encoded[ans_to_id[label]] = 1
+      ground_truth.append(encoded)
+    
 
-    if config['inference']=='rank':   
-        answer_list = data_loader.dataset.answer_list
-        answer_candidates = model.tokenizer(answer_list, padding='longest', return_tensors='pt').to(device)    
-        answer_candidates.input_ids[:,0] = model.tokenizer.bos_token_id
+    sgmd = torch.nn.Sigmoid()
         
     for n, (image, question, question_id) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):        
         image = image.to(device,non_blocking=True)  
-        answers_id = model(image, question, train=False) 
-        result_idx += answers_id.tolist()
-        answers = [id_to_ans[x] for x in answers_id.tolist()]
-        for answer, ques_id in zip(answers, question_id):
-            ques_id = int(ques_id.item())       
-            result.append({"question_id":ques_id, "answer":answer})             
-    
-    print('Accuracy', accuracy_score(ground_truth, result_idx))
-    print('f1_score-macro:', f1_score(ground_truth, result_idx, average="macro"))
-    print('f1_score-micro:', f1_score(ground_truth, result_idx, average="micro"))
-    print('f1_score-weighted:', f1_score(ground_truth, result_idx, average="weighted"))
+        logit = model(image, question, train=False)
+        logit_list.append(sgmd(logit).cpu().numpy())
+        
+                    
+    target = np.array(ground_truth)
+    pred = np.concatenate(logit_list,axis = 0)
+    print("target:",target.shape)
+    print("pred:",pred.shape)
+    acc_list = []
+    findings = ['Atelectasis','Cardiomegaly','Effusion','Infiltration',
+            'Mass','Nodule','Pneumonia','Pneumothorax','Consolidation',
+            'Edema','Emphysema','Fibrosis','Pleural_Thickening','Hernia',
+            'Normal']
+    for i, d in enumerate(findings[:-1]): #normal is excludedi
+        acc = np.mean(target[:,i] == (pred[:,i]>=0.5))
+        print(i,d,acc)
+        acc_list.append(acc)
+    print('Averaged: '+str(np.average(acc_list)))
     
     return result
 
@@ -135,18 +144,14 @@ def main(args, config):
     
     #### Encode answer ####
     print('Encoding Answers')
-    train_json = json.load(open(config['vqa_root'] + 'train.json', 'r'))
-    all_answers = []
-
-    for item in train_json:
-      all_answers.append(item['answer'][0])
-
+    
+    findings = ['Atelectasis','Cardiomegaly','Effusion','Infiltration',
+            'Mass','Nodule','Pneumonia','Pneumothorax','Consolidation',
+            'Edema','Emphysema','Fibrosis','Pleural_Thickening','Hernia',
+            'Normal']
     ans_to_id = {}
-    idx = 1
 
-    ans_to_id['[UNKNOWN]'] = 0
-
-    for ans in set(all_answers):
+    for ans in findings:
       ans_to_id[ans] = len(ans_to_id)
 
     id_to_ans = {y: x for x, y in ans_to_id.items()}

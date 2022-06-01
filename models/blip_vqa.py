@@ -34,7 +34,8 @@ class BLIP_VQA(nn.Module):
         decoder_config = BertConfig.from_json_file(med_config)        
         self.text_decoder = BertLMHeadModel(config=decoder_config)
         self.ans_dict = ans_dict
-        self.linear = nn.Linear(768, len(ans_dict))      
+        self.linear = nn.Linear(768, len(ans_dict))
+        self.sgmd = torch.nn.Sigmoid()     
 
 
     def forward(self, image, question, answer=None, n=None, weights=None, train=True, inference='rank', k_test=128):
@@ -42,7 +43,7 @@ class BLIP_VQA(nn.Module):
         image_embeds = self.visual_encoder(image) 
         image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(image.device)
         
-        question = self.tokenizer(question, padding='longest', truncation=True, max_length=35, 
+        question = self.tokenizer(question, padding='longest', truncation=True, max_length=60,
                                   return_tensors="pt").to(image.device) 
         question.input_ids[:,0] = self.tokenizer.enc_token_id
         
@@ -90,8 +91,8 @@ class BLIP_VQA(nn.Module):
                                                 encoder_attention_mask = image_atts,                                    
                                                 return_dict = True) 
             linear_output = self.linear(question_output.pooler_output)
-            prediction = torch.max(linear_output,dim=1).indices
-            return prediction
+        
+            return linear_output
             
  
                 
